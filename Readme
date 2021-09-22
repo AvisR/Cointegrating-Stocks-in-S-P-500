@@ -1,0 +1,12 @@
+In this Project, I have created a dashboard that can be used to find cointegrating pairs in S&P 500.
+I also forecast and backtest the prices predicted using VAR model for the cointegrated stocks and analyse their performance. 
+
+
+Step 1 -> Importing the data
+Step 2 -> Finding Structural Breaks in each stock         - Bai and Perron Test
+Step 3 -> Testing for Unit/Explosive roots for each stock - Augmented Dickey Fuller Test
+Step 4 -> Testing for Cointegrating relationships         - Johansen Cointegration Test
+Step 5 -> Diagnostics for the cointegrated relationships
+Step 6 -> Forecast and Performance Evaluation
+Step 7 -> Backtest and Performance Evaluation
+
