@@ -1,5 +1,5 @@
 In this Project, I have created a dashboard that can be used to find cointegrating pairs in S&P 500.
-I also forecast and backtest the prices predicted using VAR model for the cointegrated stocks and analyse their performance. 
+I also forecast and backtest the prices predicted using VAR model for the cointegrated stocks and compare the performance with holding S&P 500. 
 
 
 Step 1 -> Importing the data
