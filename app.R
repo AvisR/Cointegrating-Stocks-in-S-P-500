@@ -171,7 +171,7 @@ CPU <- makeCluster(cores[1]-2)
 registerDoParallel(CPU)
 Breakpoints <- foreach (i = 1:ncol(SPweekly),.packages = c("strucchange"),.combine = rbind) %dopar% {
 ts <- ts(SPweekly[,(i)], start = c(2000, 1), frequency=52)
-bp.ts <- breakpoints(ts~1)
+bp.ts <- breakpoints(ts~1, h=.15)
 bp.ts$breakpoints
 }
 stopCluster(CPU)
@@ -1181,22 +1181,35 @@ Metrics <- reactive({
     Treturn <- Backtest$SPCreturn[n]/100
     BRe <- ((((1+Treturn)^(1/n))-1)*100)
     Metrics[1,3] <- BRe
+    
     #Standard Deviation
     Metrics[2,2] <- sd(na.omit(Backtest$TSR))
     Metrics[2,3] <- sd(na.omit(Backtest$SnPR))
+    
     #Sharpe
     Metrics[3,2] <- sharpe(na.omit(Backtest$Creturn), scale = sqrt(52))
     Metrics[3,3] <- sharpe(na.omit(Backtest$SPCreturn), scale = sqrt(52))
-    #Maximum Drawdown
-    mdpb <- maxdrawdown(na.omit(Backtest$TSR))
-    Metrics[4,2] <- mdpb$maxdrawdown
-    mdbb <- maxdrawdown(na.omit(Backtest$SnPR))
-    Metrics[4,3] <- mdbb$maxdrawdown
-    #Recovery rate
-    fallratep <- mdpb$to-mdpb$from
     
-    Metrics[5,2] <- mean(na.omit(Backtest$TSR))
-    Metrics[5,3] <- mean(na.omit(Backtest$SnPR))
+    #Maximum Drawdown
+    mdpb <- maxdrawdown(na.omit(Backtest$Creturn))
+    Metrics[4,2] <- mdpb$maxdrawdown
+    mdbb <- maxdrawdown(na.omit(Backtest$SPCreturn))
+    Metrics[4,3] <- mdbb$maxdrawdown
+    
+    #Recovery rate
+    #Portfolio
+    sdatep <- mdpb$from
+    lowdatep <- mdpb$to
+    sdatepricep <- Backtest$Creturn[sdatep]
+    locrecp <- min(which((Backtest$Creturn[(lowdatep+1):nrow(Backtest)])>sdatepricep))
+    Metrics[5,2] <- locrecp
+    #S&P
+    sdateb <- mdbb$from
+    lowdateb <- mdbb$to
+    sdatepriceb <- Backtest$SPCreturn[sdateb]
+    locrecb <- min(which((Backtest$SPCreturn[(lowdateb+1):nrow(Backtest)])>sdatepriceb))
+    Metrics[5,3] <- locrecb
+    
     #Hitrate
     Metrics[6,2] <- (sum(na.omit(Backtest$Hitrate)))/(nrow(Backtest)-1)
     Metrics[6,3] <- (sum(na.omit(Backtest$SHitrate)))/(nrow(Backtest)-1)
