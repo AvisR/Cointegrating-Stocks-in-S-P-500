@@ -1,4 +1,4 @@
-In this Project, I have created a dashboard that can be used to find cointegrating pairs in S&P 500.
+In this Project, I have created a dashboard that can be used to find cointegrating pairs in S&P 500 and constrcut a portfolio based on it.
 I also forecast and backtest the prices predicted using VAR model for the cointegrated pairs and compare the performance with holding S&P 500. 
 
 
