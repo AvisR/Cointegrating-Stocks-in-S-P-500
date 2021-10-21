@@ -11,7 +11,7 @@ plist <- c("parallel", "foreach", "doParallel", "doSNOW", "doRNG", "tictoc",
            "readxl", "xts", "zoo", "lubridate", "tidyverse", "ggplot2", "dplyr",
            "strucchange", "tseries", "fUnitRoots", "timeSeries", "exuber", 
            "urca", "vars", "rmgarch", "FinTS", "shiny", "forecast", "ftsa", 
-           "tsDyn", "rstudioapi","PerformanceAnalytics")
+           "tsDyn", "rstudioapi","PerformanceAnalytics", "rsconnect", "gdata")
 npackage <- plist[!(plist %in% installed.packages()[,"Package"])]
 if(length(npackage)>0) {install.packages(npackage)}
     
@@ -33,6 +33,7 @@ library(xts) #To create Time series Data Frames
 library(zoo) #To create Time series Data Frames
 library(lubridate)#Manipulating Dates
 library(tidyverse) 
+library(gdata)
     
 #Package - Plotting
 library(ggplot2)#To create Plots
@@ -64,6 +65,11 @@ library(PerformanceAnalytics)
     
 #Package - Dashboard
 library(shiny)
+
+library(rsconnect)
+rsconnect::setAccountInfo(name='avisr185', token='3BE1F77908DC7470CE0294336C5A2AF5', secret='ck1AyEGzyqFSI5TXkAUdnoVCRGb2/LMjUJguSn+F')
+Sys.setlocale(locale="en_US.UTF-8")
+
     
 #Package Miscellaneous 
 library(forecast)
@@ -405,6 +411,10 @@ for (i in 1:nrow(Jouraw)){
     c <- Jouraw$V3[i]
     Jou[a,b] <- c
 }
+
+
+
+
 #----------------------
 #----------------------
     
@@ -455,7 +465,175 @@ for (i in 1:nrow(Joeraw)){
     c <- Joeraw$V3[i]
     Joe[a,b] <- c
 }
+
+
+#------------BACKTEST ALL PAIRS---------------------------------
+
+BcopairsU <- as.data.frame(which(Jou=="Yes", arr.ind = TRUE))
+BcopairsE <- as.data.frame(which(Joe=="Yes", arr.ind = TRUE))
+
+BUCopair <- matrix(rep(0), nrow(BcopairsU),2)
+BUCopair<- as.data.frame(BUCopair)
+colnames(BUCopair) <- c("Pair A", "Pair B")
+
+
+for (i in 1:nrow(BUCopair)) {
+    a <- BcopairsU[i,1]
+    b <- BcopairsU[i,2]
+    BUCopair[i,1] <- rownames(Jou)[a]
+    BUCopair[i,2] <- colnames(Jou)[b]
+}
+
+BECopair <- matrix(rep(0), nrow(BcopairsE),2)
+BECopair<- as.data.frame(BECopair)
+colnames(BECopair) <- c("Pair A", "Pair B")
+
+
+for (i in 1:nrow(BECopair)) {
+    a <- BcopairsE[i,1]
+    b <- BcopairsE[i,2]
+    BECopair[i,1] <- rownames(Joe)[a]
+    BECopair[i,2] <- colnames(Joe)[b]
+}
+
+Cpair <- rbind(BUCopair, BECopair)
+Pairs <- Cpair
+
+env <- c("Joeraw","a","b","c","i", "Jouraw", "BcopairsE", "BcopairsU","BECopair","BUCopair", "env")
+remove(list = (env))
+
+for (i in 1:nrow(Cpair)){
+    Bs <- Cpair[i,1]
+    Ps <- Cpair[i,2]
+    Pair <- c(Bs, Ps)
+    nBpbs <- Breakpoints[Bs,1]
+    Bpbs <- Breakpoints[Bs, (nBpbs+1)]
+    nBpps <- Breakpoints[Ps,1]
+    Bpps <- Breakpoints[Ps, (nBpps+1)]
+    bp <- max(Bpbs, Bpps)
+    bp <- bp+12
+    stockseries <- SPweekly[(bp:nrow(SPweekly)),Pair]
+    colnames(stockseries) <- c("Base", "Pair")
+    lag <- (VARselect(stockseries))$selection
+    lag <- min(lag)
+    lag <- 2
+    VAR <- VAR(na.omit(stockseries),lag,type ="const")
+    df <- VAR$varresult
+    BModel <- as.data.frame(VAR$varresult$Base$coefficients)
+    colnames(BModel) <- "Coefficients"
+    rownames(BModel) <- c("Bs - Lag", "Ps- Lag","Bs - 2nd Lag","Ps - 2nd Lag","Constant")
+    PModel <- as.data.frame(VAR$varresult$Pair$coefficients)
+    colnames(PModel) <- "Coefficients"
+    rownames(PModel) <- c("Bs - Lag", "Ps- Lag","Bs - 2nd Lag","Ps - 2nd Lag", "Constant")
     
+    bstart <- nrow(SPweekly)-151
+    bend <- nrow(SPweekly)
+    bseries <- SPweekly[bstart:bend,Pair]
+    rownames(bseries) <- Dates[bstart:bend]
+    colnames(bseries) <- c("Base", "Pair")
+    BFcast <- matrix(0,150,2)
+    BFcast <- as.data.frame(BFcast)
+    colnames(BFcast) <- c("Forecast Base", "Forecast Pair")
+    rownames(BFcast) <- tail(Dates, 150)
+    for (a in 1:(nrow(BFcast))) {
+        BFcast[a,1] <- (BModel$Coefficients[1]*bseries$Base[a+1])+(BModel$Coefficients[2]*bseries$Pair[a+1])+(BModel$Coefficients[3]*bseries$Base[a])+(BModel$Coefficients[4]*bseries$Pair[a])+BModel$Coefficients[5]
+        BFcast[a,2] <- (PModel$Coefficients[1]*bseries$Base[a+1])+(PModel$Coefficients[2]*bseries$Pair[a+1])+(PModel$Coefficients[3]*bseries$Base[a])+(PModel$Coefficients[4]*bseries$Pair[a])+PModel$Coefficients[5]
+    }
+    BFcast <- round(BFcast, 2)
+    BTval <- bseries[3:152,]
+    SnPt <- tail(SnPweekly[,2], 150)
+    colnames(BTval) <- c("True Base", "True Pair")
+    Backtest <- cbind(BFcast, BTval, SnPt)
+    colnames(Backtest)[5] <- "SnP"
+    
+    Backtest$TSB <- ifelse(lead(Backtest$`Forecast Base`)>=Backtest$`True Base`, "Buy", "Sell")
+    Backtest$TSP <- ifelse(lead(Backtest$`Forecast Pair`)>=Backtest$`True Pair`, "Buy", "Sell")
+    n <- nrow(Backtest)-1
+    for (b in 1:n) {
+        Backtest$BR[b] <- (((Backtest$`True Base`[b+1]-Backtest$`True Base`[b])/
+                                Backtest$`True Base`[b])*100)
+        Backtest$PR[b] <- (((Backtest$`True Pair`[b+1]-Backtest$`True Pair`[b])/
+                                Backtest$`True Pair`[b])*100)
+        Backtest$SnPR[b] <- (((Backtest$`SnP`[b+1]-Backtest$`SnP`[b])/
+                                  Backtest$`SnP`[b])*100)
+    }
+    for (c in 1:(n+1)){
+        Backtest$TSBR[c] <- ifelse(Backtest$TSB[c]=="Buy", Backtest$BR[c], ((Backtest$BR)[c]*-1)) 
+        Backtest$TSPR[c] <- ifelse(Backtest$TSP[c]=="Buy", Backtest$PR[c], ((Backtest$PR)[c]*-1)) 
+        Backtest$TSR[c] <- (.5*(Backtest$TSBR[c]))+(.5*(Backtest$TSPR[c]))
+        Backtest$Hitrate[c] <- ifelse(Backtest$TSR[c]>0 ,1, 0)
+        Backtest$SHitrate[c] <- ifelse(Backtest$SnPR[c]>0 ,1, 0)
+        Backtest$R[c] <- 1+(Backtest$TSR[c]/100)
+        Backtest$Creturn[c] <- ((((cumprod(Backtest$R)[c]))-1)*100)
+        Backtest$BR[c] <- 1+(Backtest$SnPR[c]/100)
+        Backtest$SPCreturn[c] <- ((((cumprod(Backtest$BR)[c]))-1)*100)
+        Pairs <- paste(Bs, Ps, sep = "-")
+        df <- Backtest
+        mv(from = "df", to = Pairs)
+    }
+    Metrics <- matrix(0, 7,3)
+    Metrics <- as.data.frame(Metrics)
+    colnames(Metrics) <- c("", "TS", "S&P")
+    Metrics[1,1] <- "Average Weekly Return"
+    Metrics[2,1] <- "Volatility"
+    Metrics[3,1] <- "Sharpe Ratio"
+    Metrics[4,1] <- "Peak to Drawdown"
+    Metrics[5,1] <- "Recovery"
+    Metrics[6,1] <- "Hit Rate"
+    Metrics[7,1] <- "Correlation with S&P returns"
+    #mean
+    n <- nrow(Backtest)-1
+    Treturn <- Backtest$Creturn[n]/100
+    ARe <- ((((1+Treturn)^(1/n))-1)*100)
+    Metrics[1,2] <- ARe
+    Treturn <- Backtest$SPCreturn[n]/100
+    BRe <- ((((1+Treturn)^(1/n))-1)*100)
+    Metrics[1,3] <- BRe
+    #Standard Deviation
+    Metrics[2,2] <- sd(na.omit(Backtest$TSR))
+    Metrics[2,3] <- sd(na.omit(Backtest$SnPR))
+    #Sharpe
+    Metrics[3,2] <- sharpe(na.omit(Backtest$Creturn), scale = sqrt(52))
+    Metrics[3,3] <- sharpe(na.omit(Backtest$SPCreturn), scale = sqrt(52))
+    #Maximum Drawdown
+    mdpb <- maxdrawdown(na.omit(Backtest$Creturn))
+    Metrics[4,2] <- mdpb$maxdrawdown
+    mdbb <- maxdrawdown(na.omit(Backtest$SPCreturn))
+    Metrics[4,3] <- mdbb$maxdrawdown
+    #Recovery rate
+    #Portfolio
+    sdatep <- mdpb$from
+    lowdatep <- mdpb$to
+    sdatepricep <- Backtest$Creturn[sdatep]
+    locrecp <- min(which((Backtest$Creturn[(lowdatep+1):nrow(Backtest)])>sdatepricep))
+    Metrics[5,2] <- locrecp
+    #S&P
+    sdateb <- mdbb$from
+    lowdateb <- mdbb$to
+    sdatepriceb <- Backtest$SPCreturn[sdateb]
+    locrecb <- min(which((Backtest$SPCreturn[(lowdateb+1):nrow(Backtest)])>sdatepriceb))
+    Metrics[5,3] <- locrecb
+    #Hitrate
+    Metrics[6,2] <- (sum(na.omit(Backtest$Hitrate)))/(nrow(Backtest)-1)
+    Metrics[6,3] <- (sum(na.omit(Backtest$SHitrate)))/(nrow(Backtest)-1)
+    #Correlation with S&P return
+    Corr <- correlationTest(Backtest$TSR, Backtest$SnPR)
+    Metrics[7,2] <- Corr@test$estimate
+    Metrics[,2:3] <- round(Metrics[,2:3], digits = 4)
+    Cpair$`Pair`[i] <- paste(Cpair$`Pair A`[i], Cpair$`Pair B`[i], sep = "-")
+    Cpair$`Average Weekly Return`[i] <- Metrics$TS[1]
+    Cpair$`Average S&P Return`[i] <- Metrics$`S&P`[1]
+    Cpair$`Volatility`[i] <- Metrics$TS[2]
+    Cpair$`Sharpe Ratio`[i] <- Metrics$TS[3]
+    Cpair$`Peak to Drawdown`[i] <- Metrics$TS[4]
+    Cpair$`Recovery`[i] <- Metrics$TS[5]
+    Cpair$`Hit Rate`[i] <- Metrics$TS[6]
+    Cpair$`Correlation with S&P return`[i] <- Metrics$TS[7]
+}
+
+dropcol <- c("Pair A", "Pair B")
+Cpair <- Cpair[,!(colnames(Cpair) %in% dropcol)]
+
 #-------------------------------------------------------------------------------    
 #----------------USER INTERFACE-------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -521,7 +699,18 @@ ui <- shinyUI(
                              plotOutput("CRplot"),#Cumulative Returns
                              plotOutput("dotplotbt") #Dotplot - TSR and S&P
                              )) #Close mainPanel and sidebarLayout
-            )#Close TabPanel 
+            ),#Close TabPanel
+            tabPanel("Portfolio",
+                     sidebarLayout(
+                         sidebarPanel(
+                             selectInput("Portfolio","Portfolio","Returns"),
+                             dataTableOutput("PMetrics")
+                         ),#Close sidebarPanel
+                         mainPanel(
+                             plotOutput("portplot"),#Cumulative Returns
+                             plotOutput("portdot") #Dotplot - Portfolio and S&P
+                         )) #Close mainPanel and sidebarLayout
+            )#Close TabPanel
     ))# Close NavBar and UI
 
     
@@ -1243,6 +1432,172 @@ output$dotplotbt <- renderPlot({
     geom_point(aes(y=DP))+
     labs(title = "Dotplot", x = "Dates", y= "")+
     scale_x_discrete(breaks = rownames(Backtest)[c(T,rep(F,25))])
+})
+
+#-------------------------------------------------------------------------------
+#------------PAGE 5-------------------------------------------------------------
+#-------------------------------------------------------------------------------    
+
+
+#------------PAIR SELECTION--------------------PAGE 5---------------------------
+
+#Input - Pair Selection
+
+Portfolioc <- c("Returns", "Volatility","Sharpe", "Max-Drawdown", "Recovery",
+                "Hitrate", "Correlation with S&P")
+
+observe({
+    updateSelectInput(session, "Portfolio" , choices = as.data.frame(Portfolioc))
+})
+#-------------------------------------------------------------------------------
+
+Cpairs <- reactive({
+    req(input$Portfolio)
+    input <- input$Portfolio
+    if (input == "Returns") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, 10, `Average Weekly Return`)
+    } else if (input == "Volatility") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, -10, `Volatility`)
+    } else if (input == "Sharpe") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, 10, `Sharpe Ratio`)
+    } else if (input == "Max-Drawdown") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, -10, `Peak to Drawdown`)
+    } else if (input == "Recovery") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, -10, `Recovery`)
+    } else if (input == "Hitrate") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, 10, `Hit Rate`)
+    } else {
+        Cpairs <- Cpair
+        for (i in 1:nrow(Cpair)){
+            Cpairs$Df0[i] <- abs(Cpairs$`Correlation with S&P return`[i]-0)
+        }
+        Cpairs <- top_n(Cpairs, -10, `Df0`)
+        dcol <- "Df0"
+        Cpairs <- Cpairs[,!colnames(Cpairs) %in% dcol]
+    }
+    Cpairs
+})
+
+Opf <- reactive({
+    Pf <- Cpairs()
+    Pf1 <- get(Pf$Pair[1])
+    Pf2 <- get(Pf$Pair[2])
+    Pf3 <- get(Pf$Pair[3])
+    Pf4 <- get(Pf$Pair[4])
+    Pf5 <- get(Pf$Pair[5])
+    Pf6 <- get(Pf$Pair[6])
+    Pf7 <- get(Pf$Pair[7])
+    Pf8 <- get(Pf$Pair[8])
+    Pf9 <- get(Pf$Pair[9])
+    Pf10 <- get(Pf$Pair[10])
+    Opf <- (.1*Pf1$TSR)+(.1*Pf2$TSR)+(.1*Pf3$TSR)+(.1*Pf4$TSR)+(.1*Pf5$TSR)+
+        (.1*Pf6$TSR)+(.1*Pf7$TSR)+(.1*Pf8$TSR)+(.1*Pf9$TSR)+(.1*Pf10$TSR)
+    Opf <- as.data.frame(Opf)
+    colnames(Opf) <- "TSR"
+    for (i in 1:nrow(Opf)){
+    Opf$TSR[i] <- (.1*Pf1$TSR[i])+(.1*Pf2$TSR[i])+(.1*Pf3$TSR[i])+
+        (.1*Pf4$TSR[i])+(.1*Pf5$TSR[i])+(.1*Pf6$TSR[i])+(.1*Pf7$TSR[i])+
+        (.1*Pf8$TSR[i])+(.1*Pf9$TSR[i])+(.1*Pf10$TSR[i])   
+    Opf$R[i] <- 1+(Opf$TSR[i]/100)
+    Opf$Creturn[i] <- ((((cumprod(Opf$R)[i]))-1)*100)
+    Opf$SnPR[i] <- Pf1$SnPR[i]
+    Opf$SPCreturn[i] <- Pf1$SPCreturn[i]
+    Opf$Hitrate[i] <- ifelse(Opf$TSR[i]>0 ,1, 0)
+    Opf$SHitrate[i] <- ifelse(Opf$SnPR[i]>0 ,1, 0)
+    Opf$BR[i] <- 1+(Opf$SnPR[i]/100)
+    } 
+    rownames(Opf) <- Dates[(length(Dates)-nrow(Opf)+1):length(Dates)]
+    Opf
+})
+    
+PMetrics <- reactive({
+    Opf <- Opf()
+    Opf <- as.data.frame(Opf)
+    PMetrics <- matrix(0, 6,3)
+    PMetrics <- as.data.frame(PMetrics)
+    colnames(PMetrics) <- c("", "TS", "S&P")
+    PMetrics[1,1] <- "Average Weekly Return"
+    PMetrics[2,1] <- "Volatility"
+    PMetrics[3,1] <- "Sharpe Ratio"
+    PMetrics[4,1] <- "Peak to Drawdown"
+    PMetrics[5,1] <- "Recovery"
+    PMetrics[6,1] <- "Hit Rate"
+    #mean
+    n <- nrow(Opf)-1
+    Treturn <- Opf$Creturn[n]/100
+    ARe <- ((((1+Treturn)^(1/n))-1)*100)
+    PMetrics[1,2] <- ARe
+    Treturn <- Opf$SPCreturn[n]/100
+    BRe <- ((((1+Treturn)^(1/n))-1)*100)
+    PMetrics[1,3] <- BRe
+    
+    #Standard Deviation
+    PMetrics[2,2] <- sd(na.omit(Opf$TSR))
+    PMetrics[2,3] <- sd(na.omit(Opf$SnPR))
+    
+    #Sharpe
+    PMetrics[3,2] <- sharpe(na.omit(Opf$Creturn), scale = sqrt(52))
+    PMetrics[3,3] <- sharpe(na.omit(Opf$SPCreturn), scale = sqrt(52))
+    
+    #Maximum Drawdown
+    mdpb <- maxdrawdown(na.omit(Opf$Creturn))
+    PMetrics[4,2] <- mdpb$maxdrawdown
+    mdbb <- maxdrawdown(na.omit(Opf$SPCreturn))
+    PMetrics[4,3] <- mdbb$maxdrawdown
+    
+    #Recovery rate
+    #Portfolio
+    sdatep <- mdpb$from
+    lowdatep <- mdpb$to
+    sdatepricep <- Opf$Creturn[sdatep]
+    locrecp <- min(which((Opf$Creturn[(lowdatep+1):nrow(Opf)])>sdatepricep))
+    PMetrics[5,2] <- locrecp
+    #S&P
+    sdateb <- mdbb$from
+    lowdateb <- mdbb$to
+    sdatepriceb <- Opf$SPCreturn[sdateb]
+    locrecb <- min(which((Opf$SPCreturn[(lowdateb+1):nrow(Opf)])>sdatepriceb))
+    PMetrics[5,3] <- locrecb
+    #Hitrate
+    PMetrics[6,2] <- (sum(na.omit(Opf$Hitrate)))/(nrow(Opf)-1)
+    PMetrics[6,3] <- (sum(na.omit(Opf$SHitrate)))/(nrow(Opf)-1)
+    PMetrics[,2:3] <- round(PMetrics[,2:3], digits = 4)
+    PMetrics
+})
+
+output$PMetrics <- renderDataTable({
+    PMetrics <- PMetrics()
+    PMetrics
+}, options = list(dom = 't'))
+    
+output$portplot <- renderPlot({
+    Opf <- Opf()
+    Opf <- as.data.frame(Opf)
+    min <- min((min(na.omit(Opf$Creturn))), (min(na.omit(Opf$SPCreturn))))-10
+    max <- max((max(na.omit(Opf$Creturn))), (max(na.omit(Opf$SPCreturn))))+10
+    ggplot(Opf, aes(x = rownames(Opf), y=min:max, group = 1))+
+    geom_line(aes(y=Creturn, color = "TSR Cumulative Return"))+
+    geom_line(aes(y=SPCreturn, color = "S&P Cumulative Return"))+
+    geom_line(aes(y=TSR, color = "Weekly Return"))+
+    labs(title = "Cumulative Returns", x = "Dates", y= "Return")+
+    scale_x_discrete(breaks = rownames(Opf)[c(T,rep(F,25))])
+})
+
+output$portdot <- renderPlot({
+    Opf <- Opf()
+    Opf <- as.data.frame(Opf)
+    Opf$DP <- Opf$BR*Opf$TSR
+    ggplot(Opf, aes(x = rownames(Opf), y=DP, group = 1))+
+    geom_point(aes(y=DP))+
+    labs(title = "Dotplot", x = "Dates", y= "")+
+    scale_x_discrete(breaks = rownames(Opf)[c(T,rep(F,25))])
+    
 })
 
 }#Close Server
