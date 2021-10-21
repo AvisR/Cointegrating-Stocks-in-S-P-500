@@ -9,5 +9,6 @@ Step 4 -> Testing for Cointegrating relationships         - Johansen Cointegrati
 Step 5 -> Diagnostics for the cointegrated relationships
 Step 6 -> Forecast and Performance Evaluation
 Step 7 -> Backtest and Performance Evaluation
+Step 8 -> Constructing Portfolio using the Pairs
 
 P.S Step 2 and 3 takes a long time. I am working on creating a lite version where most of the results are stored. 
