@@ -3,16 +3,17 @@ their relationship. I do this by testing for cointegrating relationship between 
 
 I have then created portfolios based on these trading signals and analyze their performance by backtesting.
 
-Step 1 -> Importing the data
-Step 2 -> Finding Structural Breaks in each stock                               - Bai and Perron Test
-Step 3 -> Testing for Unit/Explosive roots for each stock                       - Augmented Dickey Fuller Test
-Step 4 -> Testing for Cointegrating relationships                               - Johansen Cointegration Test
-Step 5 -> Diagnostics for the cointegrated relationships                        - Correlation, Error Correction Term, Granger Causality
-Step 6 -> Forecast and Performance Evaluation of individual Trading Strategy    - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate 
-Step 7 -> Backtest and Performance Evaluation of individual Trading Strategy    - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate
-Step 8 -> Constructing Portfolio using the Pairs                                - Based on Optimization of Sharpe
-Step 9 -> Forecast and Performance Evaluation of the portfolio                  - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate 
-Step 10 -> Backtest and Performance Evaluation of the portfolio                  - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate
+Step 1  -> Importing the data
+Step 2  -> Finding Structural Breaks in each stock                               - Bai and Perron Test
+Step 3  -> Testing for Unit/Explosive roots for each stock                       - Augmented Dickey Fuller Test
+Step 4  -> Testing for Cointegrating relationships                               - Johansen Cointegration Test
+Step 5  -> Forecasting prices to backtest                                        - VAR model
+Step 6  -> Diagnostics for the cointegrated relationships                        - Correlation, Error Correction Term, Granger Causality
+Step 7  -> Forecast and Performance Evaluation of individual Trading Strategy    - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate 
+Step 8  -> Backtest and Performance Evaluation of individual Trading Strategy    - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate
+Step 9  -> Constructing Portfolio using the Pairs                                - Based on Optimization of Sharpe
+Step 10 -> Forecast and Performance Evaluation of the portfolio                  - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate 
+Step 11 -> Backtest and Performance Evaluation of the portfolio                  - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate
 
 
 P.S Step 2 and 3 takes a long time. I am working on creating a lite version where most of the results are stored. 
