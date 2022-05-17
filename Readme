@@ -1,5 +1,5 @@
-In this Project, I have created a dashboard that can be used to find stocks that can used for pair trades in S&P 500 and analyze the relationship and create trading signals based
-their relationship. I do this by testing for cointegrating relationship between the stock's price series.
+In this Project, I have created a dashboard that can be used to find stocks that are cointegrated in S&P 500 and analyze the relationship and create trading signals based
+the relationship. I do this by testing for regime shits and cointegrating relationship during the stable periods in the stock's price series.
 
 I have then created portfolios based on these trading signals and analyze their performance by backtesting.
 
@@ -11,8 +11,11 @@ Step 5  -> Forecasting prices to backtest                                       
 Step 6  -> Diagnostics for the cointegrated relationships                        - Correlation, Error Correction Term, Granger Causality
 Step 7  -> Forecast and Performance Evaluation of individual Trading Strategy    - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate 
 Step 8  -> Backtest and Performance Evaluation of individual Trading Strategy    - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate
-Step 9  -> Constructing Portfolio using the Pairs                                - Based on Optimization of Sharpe
+Step 9  -> Constructing Portfolio using the Pairs                                - Based on weak optimization of either Return, Volatility, Sharpe, Drawdown or Hitrate
 Step 10 -> Backtest and Performance Evaluation of the portfolio                  - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate
 
 
-P.S Step 2 and 3 takes a long time. I am working on creating a lite version where most of the results are stored. 
+Step 2 and 3 takes a long time. To make the dashboard faster, you can export the forecasts and the individual pair's performance and import them to make the dashboard lighter.  
+Step 8-10 must be improved rebalancing the pairs every week instead of choosing same pair. (This is also against the theory as all the pairs exhit cointegrating relationship only during a specific period.)
+
+P.S - I have only tested for relationship between two stocks at a time. If we are to extend this to cointegrated relationship between multiple stocks, that would be a typical statistical arbitrage strategy.
