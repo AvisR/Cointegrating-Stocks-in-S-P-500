@@ -1,10 +1,10 @@
 #Let's make a dashboard
-
+    
 #Setup
 cat("\f")
 rm(list = ls())
 options(warn=-1)
-
+    
 #Installing required Package
     
 plist <- c("parallel", "foreach", "doParallel", "doSNOW", "doRNG", "tictoc", 
@@ -146,7 +146,6 @@ colnames(True)[506] <- "SPX"
 
 env <- c("Monday", "env")
 remove(list=c(env))
-
 
 #-------------------------------------------------------------------------------
         
@@ -343,7 +342,8 @@ Eseries <- as.data.frame(Eseries)
 
 env <- c("SPE", "SPU", "noni1", "Tsdata", "adfsta", "adfexp", "i", "locate", "adf1", "bp", "S","n", "env")
 remove(list = (env))
-
+    
+    
 #------------JOHANSEN TEST FOR COINTEGRATING RELATIONSHIP-----------------------
 
 Jou <- matrix(rep(0), (nrow(Useries)-1),(nrow(Useries)-1))
@@ -353,90 +353,53 @@ Jou <- as.data.frame(Jou)
 
 CPU <- makeCluster(cores[1]-2)
 registerDoParallel(CPU)
-Jouraw <- foreach (a = 1:(ncol(Jou)),.packages = c("urca", "vars", "parallel", "foreach", "doParallel"),.combine = rbind) %dopar% {
-    #for each base stock #a = column number
-    Bstock    <- (colnames(Jou))[a] #base stock
-    stockleft = nrow(Jou)-(a-1) #pairs left
-    foreach (i = (1:(stockleft)),.packages = c("urca", "vars", "parallel", "foreach", "doParallel" ),.combine = rbind) %dopar% { 
-        #for each pair stock
-        pairedstock <- a + (i-1) 
-        tstock <- rownames(Jou)[pairedstock]#current pair for testing
+Jouraw <- foreach (a = 1:(nrow(Useries)-1),.packages = c("urca", "vars", "parallel", "foreach", "doParallel"),.combine = rbind) %dopar% {
+    Bstock    <- (Useries$Useries)[a]
+    stockleft = nrow(Useries)-a
+    foreach (i = (1:(stockleft)),.packages = c("urca", "vars"),.combine = rbind) %dopar% { 
+        pairedstock <- a + i
+        tstock <- Useries$Useries[pairedstock]
         Stocknames <- c(Bstock, tstock)
-        bp <- Breakpoints[Stocknames,]#Breakpoints
+        bp <- Breakpoints[Stocknames,]
         nbs <- bp[Bstock, 1]
+        bpbs <- Breakpoints[Bstock, nbs]
         nps <- bp[tstock,1]
-        n <- max(nbs,nps)+1 #number of stable period
-        result <- vector(,n)
-        j = a+(i-1) #rownumber
-        foreach (b = (1:(n)),.packages = c("urca", "vars", "parallel", "foreach", "doParallel" ),.combine = rbind) %dopar% { 
-            #for each stable period
-            sb <- bp[1,b+1] 
-            sp <- bp[2,b+1]
-            sb[is.null(sb)] <- NA
-            sp[is.null(sp)] <- NA
-            sb[is.na(sb)] <- bp[1,nbs+1]
-            sp[is.na(sp)] <- bp[2,nps+1]
-            ib <- min(which(!is.na(SPweekly[,Bstock])))
-            ip <- min(which(!is.na(SPweekly[,tstock])))
-            start <- ifelse(b == 1, max(ib,ip), max(sb,sp))#Time-series start point
-            eb <- bp[1,b+2]
-            ep <- bp[2,b+2]
-            eb[is.null(eb)] <- NA
-            ep[is.null(ep)] <- NA
-            eb[is.na(eb)] <- nrow(SPweekly)
-            ep[is.na(ep)] <- nrow(SPweekly)
-            end <- ifelse(b == n ,nrow(SPweekly), min(eb,ep)) #Time-series End point
-            if (start>=end) { 
-                result[b] <- 0 #No overlapping stable period
-                } else {
-                stockseries <- SPweekly[(start:end),Stocknames]
-                stockseries <- na.omit(stockseries)
-                if (nrow(stockseries) <= 50){
-                result[b] <- 0
-                } else if (length(unique(stockseries[,1]))<=50){
-                result[b] <- 0
-                } else if (length(unique(stockseries[,2]))<=50){
-                result[b] <- 0
-                } else {    
-                lag <- (VARselect(stockseries))$selection
-                lag <- min(lag)
-                lag <- max(lag, 2)
-                Jotr <- ca.jo(stockseries, type = "trace", ecdet ="const", K=lag)
-                tvalue <- Jotr@teststat
-                tvalue <- as.data.frame(tvalue)
-                cval <- Jotr@cval
-                cval <- as.data.frame(cval)
-                result[b] <- ifelse(tvalue[1,1]<cval[1,2], 0, 1)
-                }}#close if
-            r <- sum(result)
-            relationship <- ifelse(r == 0, "No", "Yes")
-            period <- which(result==1)
-            period <- ifelse(length(period)==0, 0, period)
-            return(c(j,a,b,result[b],relationship, start, end))
-        }#close for each stable period  
-     }#close for each pair
-}#close for each base
+        bpps <- Breakpoints[tstock, nps]
+        bp <- max(bpbs,bpps)
+        bp <- bp+12
+        stockseries <- SPweekly[(bp:nrow(SPweekly)),Stocknames]
+        lag <- (VARselect(stockseries))$selection
+        lag <- min(lag)
+        lag <- max(lag, 2)
+        Jotr <- ca.jo(stockseries, type = "trace", ecdet ="const", K=lag)
+        tvalue <- Jotr@teststat
+        tvalue <- as.data.frame(tvalue)
+        cval <- Jotr@cval
+        cval <- as.data.frame(cval)
+        j = a+(i-1)
+        Jou[j,a] <- ifelse(tvalue[1,1]<cval[1,2], "No", "Yes")
+        return(c(j,a,Jou[j,a]))
+    }
+}
 stopCluster(CPU)
     
 Jouraw <- as.data.frame(Jouraw)
 Jouraw$V1 <- as.numeric(Jouraw$V1)
 Jouraw$V2 <- as.numeric(Jouraw$V2)
-Jouraw$V3 <- as.numeric(Jouraw$V3)
-Jouraw$V4 <- ifelse(Jouraw$V4==0,"No", "Yes")
-Jouraw$V6 <- as.numeric(Jouraw$V6)
-Jouraw$V7 <- as.numeric(Jouraw$V7)
-
     
 for (i in 1:nrow(Jouraw)){
     a <- Jouraw$V1[i]
     b <- Jouraw$V2[i]
-    c <- Jouraw$V5[i]
+    c <- Jouraw$V3[i]
     Jou[a,b] <- c
 }
 
-#----------------------
-#----------------------
 
+
+
+#----------------------
+#----------------------
+    
 Joe <- matrix(rep(0), (nrow(Eseries)-1),(nrow(Eseries)-1))
 rownames(Joe) <- Eseries$Eseries[-1]  
 colnames(Joe) <- Eseries$Eseries[-(nrow(Eseries))]  
@@ -444,67 +407,32 @@ Joe <- as.data.frame(Joe)
     
 CPU <- makeCluster(cores[1]-2)
 registerDoParallel(CPU)
-Joeraw <- foreach (a = 1:(ncol(Joe)),.packages = c("urca", "vars", "parallel", "foreach", "doParallel"),.combine = rbind) %dopar% {
-    #for each base stock #a = column number
-    Bstock    <- (colnames(Joe))[a] #Base Stock 
-    stockleft = nrow(Joe)-(a-1) #Unique pairs available for the stock
-    foreach (i = (1:(stockleft)),.packages = c("urca", "vars", "parallel", "foreach", "doParallel" ),.combine = rbind) %dopar% { 
-        #for each pair stock
-        pairedstock <- a + (i-1) 
-        tstock <- rownames(Joe)[pairedstock]#current pair for testing
+Joeraw <- foreach (a = 1:(nrow(Eseries)-1),.packages = c("urca", "vars", "parallel", "foreach", "doParallel"),.combine = rbind) %dopar% {
+    Bstock    <- (Eseries$Eseries)[a]
+    stockleft = nrow(Eseries)-a
+    foreach (i = (1:(stockleft)),.packages = c("urca", "vars"),.combine = rbind) %dopar% { 
+        pairedstock <- a + i
+        tstock <- Eseries$Eseries[pairedstock]
         Stocknames <- c(Bstock, tstock)
-        bp <- Breakpoints[Stocknames,]#Breakpoints
+        bp <- Breakpoints[Stocknames,]
         nbs <- bp[Bstock, 1]
+        bpbs <- Breakpoints[Bstock, (nbs+1)]
         nps <- bp[tstock,1]
-        n <- max(nbs,nps)+1 #number of stable period
-        result <- vector(,n)
-        j = a+(i-1) #rownumber
-        foreach (b = (1:(n)),.packages = c("urca", "vars", "parallel", "foreach", "doParallel" ),.combine = rbind) %dopar% { 
-            #for each stable period
-            sb <- bp[1,b+1] 
-            sp <- bp[2,b+1]
-            sb[is.null(sb)] <- NA
-            sp[is.null(sp)] <- NA
-            sb[is.na(sb)] <- bp[1,nbs+1]
-            sp[is.na(sp)] <- bp[2,nps+1]
-            ib <- min(which(!is.na(SPweekly[,Bstock])))
-            ip <- min(which(!is.na(SPweekly[,tstock])))
-            start <- ifelse(b == 1, max(ib,ip), max(sb,sp))#Time-series start point
-            eb <- bp[1,b+2]
-            ep <- bp[2,b+2]
-            eb[is.null(eb)] <- NA
-            ep[is.null(ep)] <- NA
-            eb[is.na(eb)] <- nrow(SPweekly)
-            ep[is.na(ep)] <- nrow(SPweekly)
-            end <- ifelse(b == n ,nrow(SPweekly), min(eb,ep)) #Time-series End point
-            if (start>=end) { 
-                result[b] <- 0 #No overlapping stable period
-            } else {
-                stockseries <- SPweekly[(start:end),Stocknames]
-                stockseries <- na.omit(stockseries)
-                if (nrow(stockseries) <= 50){
-                    result[b] <- 0
-                } else if (length(unique(stockseries[,1]))<=50){
-                    result[b] <- 0
-                } else if (length(unique(stockseries[,2]))<=50){
-                    result[b] <- 0
-                } else {    
-                    lag <- (VARselect(stockseries))$selection
-                    lag <- min(lag)
-                    lag <- max(lag, 2)
-                    Jotr <- ca.jo(stockseries, type = "trace", ecdet ="const", K=lag)
-                    tvalue <- Jotr@teststat
-                    tvalue <- as.data.frame(tvalue)
-                    cval <- Jotr@cval
-                    cval <- as.data.frame(cval)
-                    result[b] <- ifelse(tvalue[1,1]<cval[1,2], 0, 1)
-                }}#close if
-            r <- sum(result)
-            relationship <- ifelse(r == 0, "No", "Yes")
-            period <- which(result==1)
-            period <- ifelse(length(period)==0, 0, period)
-            return(c(j,a,b,result[b],relationship, start,end))
-        }#close for each stable period  
+        bpps <- Breakpoints[tstock, (nps+1)]
+        bp <- max(bpbs,bpps)
+        bp <- bp+12
+        stockseries <- SPweekly[(bp:nrow(SPweekly)),Stocknames]
+        lag <- (VARselect(stockseries))$selection
+        lag <- min(lag)
+        lag <- max(lag, 2)
+        Jotr <- ca.jo(stockseries, type = "trace", ecdet ="const", K=lag)
+        tvalue <- Jotr@teststat
+        tvalue <- as.data.frame(tvalue)
+        cval <- Jotr@cval
+        cval <- as.data.frame(cval)
+        j = a+(i-1)
+        Joe[j,a] <- ifelse(tvalue[1,1]<cval[1,2], "No", "Yes")
+        return(c(j,a,Joe[j,a]))
     }
 }
 stopCluster(CPU)
@@ -512,85 +440,68 @@ stopCluster(CPU)
 Joeraw <- as.data.frame(Joeraw)
 Joeraw$V1 <- as.numeric(Joeraw$V1)
 Joeraw$V2 <- as.numeric(Joeraw$V2)
-Joeraw$V3 <- as.numeric(Joeraw$V3)
-Joeraw$V4 <- ifelse(Joeraw$V4==0,"No", "Yes")
-Joeraw$V6 <- as.numeric(Joeraw$V6)
-Joeraw$V7 <- as.numeric(Joeraw$V7)
-
     
 for (i in 1:nrow(Joeraw)){
     a <- Joeraw$V1[i]
     b <- Joeraw$V2[i]
-    c <- Joeraw$V5[i]
+    c <- Joeraw$V3[i]
     Joe[a,b] <- c
-     
 }
 
 
 #------------BACKTEST ALL PAIRS---------------------------------
 
-#Cointegrated stock and cointegrated period for each pair
-PeriodU <- Jouraw[Jouraw$V4 == "Yes",]
-PeriodE <- Joeraw[Joeraw$V4 == "Yes",]
-PeriodU$Base <- colnames(Jou)[PeriodU$V2]
-PeriodU$Pair <- rownames(Jou)[PeriodU$V1]
-PeriodE$Base <- colnames(Joe)[PeriodE$V2]
-PeriodE$Pair <- rownames(Joe)[PeriodE$V1]
+BcopairsU <- as.data.frame(which(Jou=="Yes", arr.ind = TRUE))
+BcopairsE <- as.data.frame(which(Joe=="Yes", arr.ind = TRUE))
 
-PeriodU <- PeriodU[,6:9]
-PeriodE <- PeriodE[,6:9]
+BUCopair <- matrix(rep(0), nrow(BcopairsU),2)
+BUCopair<- as.data.frame(BUCopair)
+colnames(BUCopair) <- c("Pair A", "Pair B")
 
-PeriodU <- unique(PeriodU)
-PeriodE <- unique(PeriodE)
 
-cnames <- c("Start", "End", "Pair A", "Pair B")
+for (i in 1:nrow(BUCopair)) {
+    a <- BcopairsU[i,1]
+    b <- BcopairsU[i,2]
+    BUCopair[i,1] <- rownames(Jou)[a]
+    BUCopair[i,2] <- colnames(Jou)[b]
+}
 
-Cpair <- rbind(PeriodU, PeriodE)
-colnames(Cpair) <- cnames
+BECopair <- matrix(rep(0), nrow(BcopairsE),2)
+BECopair<- as.data.frame(BECopair)
+colnames(BECopair) <- c("Pair A", "Pair B")
 
-Cpair <- Cpair[,c(3,4,1,2)]
-CoP <- Cpair[,c(1,2)]
-del <- which(duplicated(CoP))
 
-#Remove stocks cointegrated for less than 3 years
+for (i in 1:nrow(BECopair)) {
+    a <- BcopairsE[i,1]
+    b <- BcopairsE[i,2]
+    BECopair[i,1] <- rownames(Joe)[a]
+    BECopair[i,2] <- colnames(Joe)[b]
+}
 
-Cpair$Period <- Cpair$End-Cpair$Start
-
-Cpair <- Cpair[-c(del),]
-rownames(Cpair) <- index(Cpair)
+Cpair <- rbind(BUCopair, BECopair)
 `Cointeg-Pairs` <- Cpair
 
-
-env <- c("Joeraw","a","b","c","i", "Jouraw", "BcopairsE", "BcopairsU",
-         "BECopair","BUCopair", "PeriodU", "PeriodE", "cnames",
-         "CoP", "del", "env")
+env <- c("Joeraw","a","b","c","i", "Jouraw", "BcopairsE", "BcopairsU","BECopair","BUCopair", "env")
 remove(list = (env))
 
-
-#-------BACKTEST FOR ENTIRE PERIOD----------------------------------------------
-    
-CpairEP <- Cpair 
-
-for (i in 1:nrow(CpairEP)){
+for (i in 1:nrow(Cpair)){
     #Pair Selection
-    Bs <- CpairEP[i,1]
-    Ps <- CpairEP[i,2]
+    Bs <- Cpair[i,1]
+    Ps <- Cpair[i,2]
     Pair <- c(Bs, Ps)
-    
-    #Rejection based on length of the relationship
-    period <- CpairEP$Period[i]
-    if (period<=151) next
-    
-    #Rejection based on possibility of trading
-    start <- CpairEP$Start[i]+150
-    if (start>=1100) next
-    
-    #Observation Selection
-    stockseries <- SPweekly[(start:(start+150)),Pair]
+   
+     #Observation Selection
+    nBpbs <- Breakpoints[Bs,1]
+    Bpbs <- Breakpoints[Bs, (nBpbs+1)]
+    nBpps <- Breakpoints[Ps,1]
+    Bpps <- Breakpoints[Ps, (nBpps+1)]
+    bp <- max(Bpbs, Bpps)
+    bp <- bp+12
+    stockseries <- SPweekly[(bp:nrow(SPweekly)),Pair]
     colnames(stockseries) <- c("Base", "Pair")
     
     #VAR Equation
-    lag <- (VARselect(na.omit(stockseries)))$selection
+    lag <- (VARselect(stockseries))$selection
     lag <- min(lag)
     lag <- 2
     VAR <- VAR(na.omit(stockseries),lag,type ="const")
@@ -602,32 +513,183 @@ for (i in 1:nrow(CpairEP)){
     colnames(PModel) <- "Coefficients"
     rownames(PModel) <- c("Bs - Lag", "Ps- Lag","Bs - 2nd Lag","Ps - 2nd Lag", "Constant")
     
-    #Start of trading strategy
-    start <- CpairEP[i,3]+150
-    end <- ifelse(start+99>1122, 1122, start+99)
-    
-    
-    #True and Forecast value
-    BTrue <- SPweekly[((start-2):end),Pair]
-    BTrue <- na.omit(BTrue)
-  
-
-    
-    colnames(BTrue) <- c("Base", "Pair")
-    BFcast <- matrix(0,(nrow(BTrue)-2),2)
+    #True and Forecasted value
+    bstart <- nrow(SPweekly)-151
+    bend <- nrow(SPweekly)
+    bseries <- SPweekly[bstart:bend,Pair]
+    rownames(bseries) <- Dates[bstart:bend]
+    colnames(bseries) <- c("Base", "Pair")
+    BFcast <- matrix(0,(nrow(bseries)-2),2)
     BFcast <- as.data.frame(BFcast)
     colnames(BFcast) <- c("Forecast Base", "Forecast Pair")
-    
+    rownames(BFcast) <- tail(Dates, nrow(BFcast))
     for (a in 1:(nrow(BFcast))) {
-        BFcast[a,1] <- (BModel$Coefficients[1]*BTrue$Base[a+1])+(BModel$Coefficients[2]*BTrue$Pair[a+1])+(BModel$Coefficients[3]*BTrue$Base[a])+(BModel$Coefficients[4]*BTrue$Pair[a])+BModel$Coefficients[5]
-        BFcast[a,2] <- (PModel$Coefficients[1]*BTrue$Base[a+1])+(PModel$Coefficients[2]*BTrue$Pair[a+1])+(PModel$Coefficients[3]*BTrue$Base[a])+(PModel$Coefficients[4]*BTrue$Pair[a])+PModel$Coefficients[5]
+        BFcast[a,1] <- (BModel$Coefficients[1]*bseries$Base[a+1])+(BModel$Coefficients[2]*bseries$Pair[a+1])+(BModel$Coefficients[3]*bseries$Base[a])+(BModel$Coefficients[4]*bseries$Pair[a])+BModel$Coefficients[5]
+        BFcast[a,2] <- (PModel$Coefficients[1]*bseries$Base[a+1])+(PModel$Coefficients[2]*bseries$Pair[a+1])+(PModel$Coefficients[3]*bseries$Base[a])+(PModel$Coefficients[4]*bseries$Pair[a])+PModel$Coefficients[5]
     }
     BFcast <- round(BFcast, 2)
-    SnPt <- tail(SnPweekly[3:nrow(BTrue),2], nrow(BFcast))
-    colnames(BTrue) <- c("True Base", "True Pair")
+    BTval <- bseries[3:152,]
+    SnPt <- tail(SnPweekly[,2], nrow(BFcast))
+    colnames(BTval) <- c("True Base", "True Pair")
     
     #Backtest using the forecasted and true value
-    Backtest <- cbind(BFcast, BTrue[(3:nrow(BTrue)),], SnPt)
+    Backtest <- cbind(BFcast, BTval, SnPt)
+    colnames(Backtest)[5] <- "SnP"
+    Backtest$TSB <- ifelse(lead(Backtest$`Forecast Base`)>=Backtest$`True Base`, "Buy", "Sell")
+    Backtest$TSP <- ifelse(lead(Backtest$`Forecast Pair`)>=Backtest$`True Pair`, "Buy", "Sell")
+    n <- nrow(Backtest)-1
+    for (b in 1:n) {
+        Backtest$BR[b] <- (((Backtest$`True Base`[b+1]-Backtest$`True Base`[b])/
+                                Backtest$`True Base`[b])*100)
+        Backtest$PR[b] <- (((Backtest$`True Pair`[b+1]-Backtest$`True Pair`[b])/
+                                Backtest$`True Pair`[b])*100)
+        Backtest$SnPR[b] <- (((Backtest$`SnP`[b+1]-Backtest$`SnP`[b])/
+                                  Backtest$`SnP`[b])*100)
+    }
+    for (c in 1:(n+1)){
+        Backtest$TSBR[c] <- ifelse(Backtest$TSB[c]=="Buy", Backtest$BR[c], ((Backtest$BR)[c]*-1)) 
+        Backtest$TSPR[c] <- ifelse(Backtest$TSP[c]=="Buy", Backtest$PR[c], ((Backtest$PR)[c]*-1)) 
+        Backtest$TSR[c] <- (.5*(Backtest$TSBR[c]))+(.5*(Backtest$TSPR[c]))
+        Backtest$Hitrate[c] <- ifelse(Backtest$TSR[c]>0 ,1, 0)
+        Backtest$SHitrate[c] <- ifelse(Backtest$SnPR[c]>0 ,1, 0)
+        Backtest$R[c] <- 1+(Backtest$TSR[c]/100)
+        Backtest$Creturn[c] <- ((((cumprod(Backtest$R)[c]))-1)*100)
+        Backtest$BR[c] <- 1+(Backtest$SnPR[c]/100)
+        Backtest$SPCreturn[c] <- ((((cumprod(Backtest$BR)[c]))-1)*100)
+        Pairs <- paste(Bs, Ps, sep = "-")
+        df <- Backtest
+        mv(from = "df", to = Pairs)
+    }
+    
+    #Metrics for the trading strategy
+    Metrics <- matrix(0, 7,3)
+    Metrics <- as.data.frame(Metrics)
+    colnames(Metrics) <- c("", "TS", "S&P")
+    Metrics[1,1] <- "Average Weekly Return"
+    Metrics[2,1] <- "Volatility"
+    Metrics[3,1] <- "Sharpe Ratio"
+    Metrics[4,1] <- "Peak to Drawdown"
+    Metrics[5,1] <- "Recovery"
+    Metrics[6,1] <- "Hit Rate"
+    Metrics[7,1] <- "Correlation with S&P returns"
+    #mean
+    n <- nrow(Backtest)-1
+    Treturn <- Backtest$Creturn[n]/100
+    ARe <- ((((1+Treturn)^(1/n))-1)*100)
+    Metrics[1,2] <- ARe
+    Treturn <- Backtest$SPCreturn[n]/100
+    BRe <- ((((1+Treturn)^(1/n))-1)*100)
+    Metrics[1,3] <- BRe
+    #Standard Deviation
+    Metrics[2,2] <- sd(na.omit(Backtest$TSR))
+    Metrics[2,3] <- sd(na.omit(Backtest$SnPR))
+    #Sharpe
+    Metrics[3,2] <- sharpe(na.omit(Backtest$Creturn), scale = sqrt(52))
+    Metrics[3,3] <- sharpe(na.omit(Backtest$SPCreturn), scale = sqrt(52))
+    #Maximum Drawdown
+    mdpb <- maxdrawdown(na.omit(Backtest$Creturn))
+    Metrics[4,2] <- mdpb$maxdrawdown
+    mdbb <- maxdrawdown(na.omit(Backtest$SPCreturn))
+    Metrics[4,3] <- mdbb$maxdrawdown
+    #Recovery rate
+    #Portfolio
+    sdatep <- mdpb$from
+    lowdatep <- mdpb$to
+    sdatepricep <- Backtest$Creturn[sdatep]
+    locrecp <- min(which((Backtest$Creturn[(lowdatep+1):nrow(Backtest)])>sdatepricep))
+    Metrics[5,2] <- locrecp
+    #S&P
+    sdateb <- mdbb$from
+    lowdateb <- mdbb$to
+    sdatepriceb <- Backtest$SPCreturn[sdateb]
+    locrecb <- min(which((Backtest$SPCreturn[(lowdateb+1):nrow(Backtest)])>sdatepriceb))
+    Metrics[5,3] <- locrecb
+    #Hitrate
+    Metrics[6,2] <- (sum(na.omit(Backtest$Hitrate)))/(nrow(Backtest)-1)
+    Metrics[6,3] <- (sum(na.omit(Backtest$SHitrate)))/(nrow(Backtest)-1)
+    #Correlation with S&P return
+    Corr <- correlationTest(Backtest$TSR, Backtest$SnPR)
+    Metrics[7,2] <- Corr@test$estimate
+    Metrics[,2:3] <- round(Metrics[,2:3], digits = 4)
+    Cpair$`Pair`[i] <- paste(Cpair$`Pair A`[i], Cpair$`Pair B`[i], sep = "-")
+    Cpair$`Average Weekly Return`[i] <- Metrics$TS[1]
+    Cpair$`Average S&P Return`[i] <- Metrics$`S&P`[1]
+    Cpair$`Volatility`[i] <- Metrics$TS[2]
+    Cpair$`Sharpe Ratio`[i] <- Metrics$TS[3]
+    Cpair$`Peak to Drawdown`[i] <- Metrics$TS[4]
+    Cpair$`Recovery`[i] <- Metrics$TS[5]
+    Cpair$`Hit Rate`[i] <- Metrics$TS[6]
+    Cpair$`Correlation with S&P return`[i] <- Metrics$TS[7]
+}
+
+dropcol <- c("Pair A", "Pair B")
+Cpair <- Cpair[,!(colnames(Cpair) %in% dropcol)]
+FcastCP <- list()
+
+for (i in 1:nrow(Cpair)){
+    envname <- Cpair$Pair[i]
+    FcastCP[[i]] <- get(envname)
+}
+
+names(FcastCP) <- Cpair$Pair
+
+
+#-------------------------------------------------------------------------
+    
+CpairEP <- `Cointeg-Pairs` 
+
+for (i in 1:nrow(CpairEP)){
+    #Pair Selection
+    Bs <- CpairEP[i,1]
+    Ps <- CpairEP[i,2]
+    Pair <- c(Bs, Ps)
+    
+    #Observation Selection
+    nBpbs <- Breakpoints[Bs,1]
+    Bpbs <- Breakpoints[Bs, (nBpbs+1)]
+    nBpps <- Breakpoints[Ps,1]
+    Bpps <- Breakpoints[Ps, (nBpps+1)]
+    bp <- max(Bpbs, Bpps)
+    bp <- bp+12
+    stockseries <- SPweekly[(bp:nrow(SPweekly)),Pair]
+    colnames(stockseries) <- c("Base", "Pair")
+    
+    #VAR Equation
+    lag <- (VARselect(stockseries))$selection
+    lag <- min(lag)
+    lag <- 2
+    VAR <- VAR(na.omit(stockseries),lag,type ="const")
+    df <- VAR$varresult
+    BModel <- as.data.frame(VAR$varresult$Base$coefficients)
+    colnames(BModel) <- "Coefficients"
+    rownames(BModel) <- c("Bs - Lag", "Ps- Lag","Bs - 2nd Lag","Ps - 2nd Lag","Constant")
+    PModel <- as.data.frame(VAR$varresult$Pair$coefficients)
+    colnames(PModel) <- "Coefficients"
+    rownames(PModel) <- c("Bs - Lag", "Ps- Lag","Bs - 2nd Lag","Ps - 2nd Lag", "Constant")
+    
+    #Replacing Stock Series with Entire Series
+    stockseries <- SPweekly[,Pair]
+    colnames(stockseries) <- c("Base", "Pair")
+    
+    #True and Forecasted value
+    bseries <- SPweekly[,Pair]
+    rownames(bseries) <- Dates
+    colnames(bseries) <- c("Base", "Pair")
+    BFcast <- matrix(0,(nrow(bseries)-2),2)
+    BFcast <- as.data.frame(BFcast)
+    colnames(BFcast) <- c("Forecast Base", "Forecast Pair")
+    rownames(BFcast) <- tail(Dates, nrow(BFcast))
+    for (a in 1:(nrow(BFcast))) {
+        BFcast[a,1] <- (BModel$Coefficients[1]*bseries$Base[a+1])+(BModel$Coefficients[2]*bseries$Pair[a+1])+(BModel$Coefficients[3]*bseries$Base[a])+(BModel$Coefficients[4]*bseries$Pair[a])+BModel$Coefficients[5]
+        BFcast[a,2] <- (PModel$Coefficients[1]*bseries$Base[a+1])+(PModel$Coefficients[2]*bseries$Pair[a+1])+(PModel$Coefficients[3]*bseries$Base[a])+(PModel$Coefficients[4]*bseries$Pair[a])+PModel$Coefficients[5]
+    }
+    BFcast <- round(BFcast, 2)
+    BTval <- bseries[3:nrow(bseries),]
+    SnPt <- tail(SnPweekly[3:nrow(bseries),2], nrow(BFcast))
+    colnames(BTval) <- c("True Base", "True Pair")
+    
+    #Backtest using the forecasted and true value
+    Backtest <- cbind(BFcast, BTval, SnPt)
     colnames(Backtest)[5] <- "SnP"
     Backtest$TSB <- ifelse(lead(Backtest$`Forecast Base`)>=Backtest$`True Base`, "Buy", "Sell")
     Backtest$TSP <- ifelse(lead(Backtest$`Forecast Pair`)>=Backtest$`True Pair`, "Buy", "Sell")
@@ -653,10 +715,9 @@ for (i in 1:nrow(CpairEP)){
         Backtest$BR[c] <- 1+(na.omit(Backtest$SnPR[c])/100)
         Backtest$SPCreturn[c] <- ((((na.omit(cumprod(Backtest$BR)[c])))-1)*100)
         Pairs <- paste(Bs, Ps, sep = "-")
-        rownames(Backtest)[c] <- Dates[start+c-1]
+        df <- Backtest
+        mv(from = "df", to = Pairs)
     }
-    df <- Backtest
-    mv(from = "df", to = Pairs)
     
     #Metrics for the trading strategy
     Metrics <- matrix(0, 7,3)
@@ -709,8 +770,6 @@ for (i in 1:nrow(CpairEP)){
     Metrics[7,2] <- Corr@test$estimate
     Metrics[,2:3] <- round(Metrics[,2:3], digits = 4)
     CpairEP$`Pair`[i] <- paste(CpairEP$`Pair A`[i], CpairEP$`Pair B`[i], sep = "-")
-    CpairEP$StartTS[i] <- start
-    CpairEP$EndTS[i] <- end
     CpairEP$`Average Weekly Return`[i] <- Metrics$TS[1]
     CpairEP$`Average S&P Return`[i] <- Metrics$`S&P`[1]
     CpairEP$`Volatility`[i] <- Metrics$TS[2]
@@ -721,10 +780,7 @@ for (i in 1:nrow(CpairEP)){
     CpairEP$`Correlation with S&P return`[i] <- Metrics$TS[7]
 }
 
-CpairEP <- CpairEP[(CpairEP$Period>151),]
-CpairEP <- CpairEP[((CpairEP$Start+150)<1100),]
-
-dropcol <- c("Pair A", "Pair B", "Start", "End")
+dropcol <- c("Pair A", "Pair B")
 CpairEP <- CpairEP[,!(colnames(CpairEP) %in% dropcol)]
 
 FcastEP <- list()
@@ -737,17 +793,10 @@ for (i in 1:nrow(CpairEP)){
 names(FcastEP) <- CpairEP$Pair
 cnames <- colnames(Backtest)
 
-env <- c(c(CpairCP$Pair), "Backtest", "BFcast", "BModel", "bseries", "BTval",
+env <- c(c(Cpair$Pair), "Backtest", "BFcast", "BModel", "bseries", "BTval",
          "Cointeg-Pairs", "Corr", "mdbb", "mdpb", "Metrics", "PModel",
-         "SnP", "SnPt", "stockseries", "Steries", "VAR", "start", "end", 
-         "sdateb", "sdatep", "sdatepriceb", "sdatepricep", "Bs", "Ps", "n", 
-         "a", "locrecb", "locrecp", "Sym", "PSym", "Treturn", "envname", "ep", 
-         "i", "ARe", "b", "D", "D1", "D2", "z", "bp", "dropcol", "BRe", "c", 
-         "cnames" ,"lowdateb", "lowdatep", "lag", "period",
-         "Pair", "Pairs", "env")
+         "SnP", "SnPt", "stockseries", "Steries", "VAR")
 remove(list = env)
-
-
 
 #-------------------------------------------------------------------------------    
 #----------------USER INTERFACE-------------------------------------------------
@@ -757,11 +806,6 @@ remove(list = env)
 
 ui <- shinyUI(
         navbarPage("Cointegrated Stocks",
-            tabPanel("Introduction",
-                mainPanel(
-                    htmlOutput("Introduction"), #Introduction
-                    ) #Close mainPanel
-                   ),#Close TabPanel
             tabPanel("Base Stock",
                 # Sidebar with a dropdown input for stock names and their breakpoints
                 sidebarLayout(
@@ -820,6 +864,20 @@ ui <- shinyUI(
                              plotOutput("dotplotbt") #Dotplot - TSR and S&P
                              )) #Close mainPanel and sidebarLayout
             ),#Close TabPanel
+            tabPanel("Portfolio - 3 Years",
+                     sidebarLayout(
+                         sidebarPanel(
+                             selectInput("Portfolio","Portfolio","Returns"),
+                             dataTableOutput("PMetrics")
+                         ),#Close sidebarPanel
+                         mainPanel(
+                             fluidRow(
+                             splitLayout(cellWidths = c("50%", "50%"),
+                             plotOutput("portplot"),#Cumulative Returns
+                             plotOutput("portretplot"))), #Return analysis
+                             plotOutput("portdot") #Dotplot - Portfolio and S&P
+                         )) #Close mainPanel and sidebarLayout
+            ),#Close TabPanel
             tabPanel("Portfolio - Entire Period",
                      sidebarLayout(
                          sidebarPanel(
@@ -845,34 +903,7 @@ server <- function(input, output, session) {
 #-------------------------------------------------------------------------------
 #----------------PAGE 1---------------------------------------------------------
 #-------------------------------------------------------------------------------    
-
-    
-    
-#Output - Existence of Unit Roots/Explosive Root
-output$`Introduction` <- renderPrint({
-Introduction <- cat("In this Project, I have created a dashboard that can be 
-used to find stocks that can used for pair trades in S&P 500 and analyze the
-relationship and create trading signals based their relationship. I do this 
-by testing for cointegrating relationship between the stock's price series.\n
-
-I have then created portfolios based on these trading signals and analyze their
-performance by backtesting.\n
-
-Step 1  -> Importing the data
-Step 2  -> Finding Structural Breaks in each stock                               - Bai and Perron Test\n
-Step 3  -> Testing for Unit/Explosive roots for each stock                       - Augmented Dickey Fuller Test\n
-Step 4  -> Testing for Cointegrating relationships                               - Johansen Cointegration Test\n
-Step 5  -> Forecasting prices to backtest                                        - VAR model\n
-Step 6  -> Diagnostics for the cointegrated relationships                        - Correlation, Error Correction Term, Granger Causality\n
-Step 7  -> Forecast and Performance Evaluation of individual Trading Strategy    - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate \n
-Step 8  -> Backtest and Performance Evaluation of individual Trading Strategy    - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate\n
-Step 9  -> Constructing Portfolio using the Pairs                                - Based on Optimization of Sharpe\n
-Step 10 -> Forecast and Performance Evaluation of the portfolio                  - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate \n
-Step 11 -> Backtest and Performance Evaluation of the portfolio                  - Weekly return, Volatility, Sharpe, Peak to trough drawdown, Recovery, Hitrate")
-
-Introduction
-})        
-    
+        
 #--------------------STOCK SELECTION--------------------------------------------    
     
 #Input - Stock Selection
@@ -1593,56 +1624,206 @@ output$dotplotbt <- renderPlot({
 
 #Input - Portfolio Selection
 
-PortfolioCP <- c("Average Weekly Return", "Volatility","Sharpe Ratio", "Peak to Drawdown", "Recovery",
-                "Hit Rate", "Correlation with S&P return")
+Portfolioc <- c("Returns", "Volatility","Sharpe", "Max-Drawdown", "Recovery",
+                "Hitrate", "Correlation with S&P")
 
 observe({
-    updateSelectInput(session, "Portfolio" , choices = as.data.frame(PortfolioCP))
+    updateSelectInput(session, "Portfolio" , choices = as.data.frame(Portfolioc))
 })
+#-------------------------------------------------------------------------------
 
 Cpairs <- reactive({
     req(input$Portfolio)
     input <- input$Portfolio
-    itp <- 151
-    m <- 50
-    ttp <- round(nrow(SPweekly)/50)
-    for (i in 1:ttp){
-        st <- ifelse(i==1, itp, (itp+(50*(i-1))))
-        et <- st+49
-        tradeavai <- CpairEP[CpairEP$StartTS<=st & CpairEP$EndTS>=et,]
-        if (input == "Average Weekly Return") {
-            tradeavai <- top_n(tradeavai, 10, `Average Weekly Return`)
-        } else if (input == "Volatility") {
-            tradeavai <- top_n(tradeavai, -10, `Volatility`)
-        } else if (input == "Sharpe Ratio") {
-            tradeavai <- top_n(tradeavai, 10, `Sharpe Ratio`)
-        } else if (input == "Peak to Drawdown") {
-            tradeavai <- top_n(tradeavai, -10, `Peak to Drawdown`)
-        } else if (input == "Recovery") {
-            tradeavai <- top_n(tradeavai, -10, `Recovery`)
-        } else if (input == "Hit Rate") {
-            tradeavai <- top_n(tradeavai, 10, `Hit Rate`)
-        } else {
-            for (i in 1:nrow(Cpair)){
-                tradeavai$Df0[i] <- abs(tradeavai$`Correlation with S&P return`[i]-0)
-            }
-            tradeavai <- top_n(tradeavai, -10, `Df0`)
-            dcol <- "Df0"
-            tradeavai <- tradeavai[,!colnames(tradeavai) %in% dcol]
+    if (input == "Returns") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, 10, `Average Weekly Return`)
+    } else if (input == "Volatility") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, -10, `Volatility`)
+    } else if (input == "Sharpe") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, 10, `Sharpe Ratio`)
+    } else if (input == "Max-Drawdown") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, -10, `Peak to Drawdown`)
+    } else if (input == "Recovery") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, -10, `Recovery`)
+    } else if (input == "Hitrate") {
+        Cpairs <- Cpair
+        Cpairs <- top_n(Cpairs, 10, `Hit Rate`)
+    } else {
+        Cpairs <- Cpair
+        for (i in 1:nrow(Cpair)){
+            Cpairs$Df0[i] <- abs(Cpairs$`Correlation with S&P return`[i]-0)
         }
-        Cpairs <- ifelse(i==1, as.data.frame(tradeavai), rbind(Cpairs, tradeavai))
-        Cpairs <- as.data.frame(Cpairs)
-    
-        }
+        Cpairs <- top_n(Cpairs, -10, `Df0`)
+        dcol <- "Df0"
+        Cpairs <- Cpairs[,!colnames(Cpairs) %in% dcol]
+    }
     Cpairs
 })
 
+Opf <- reactive({
+    Pf <- Cpairs()
+    Pf1 <- as.data.frame(FcastCP[Pf$Pair[2]])
+    colnames(Pf1) <- cnames
+    Pf2 <- as.data.frame(FcastCP[Pf$Pair[2]])
+    colnames(Pf2) <- cnames
+    Pf3 <- as.data.frame(FcastCP[Pf$Pair[3]])
+    colnames(Pf3) <- cnames
+    Pf4 <- as.data.frame(FcastCP[Pf$Pair[4]])
+    colnames(Pf4) <- cnames
+    Pf5 <- as.data.frame(FcastCP[Pf$Pair[5]])
+    colnames(Pf5) <- cnames
+    Pf6 <- as.data.frame(FcastCP[Pf$Pair[6]])
+    colnames(Pf6) <- cnames
+    Pf7 <- as.data.frame(FcastCP[Pf$Pair[7]])
+    colnames(Pf7) <- cnames
+    Pf8 <- as.data.frame(FcastCP[Pf$Pair[8]])
+    colnames(Pf8) <- cnames
+    Pf9 <- as.data.frame(FcastCP[Pf$Pair[9]])
+    colnames(Pf9) <- cnames
+    Pf10 <- as.data.frame(FcastCP[Pf$Pair[10]])
+    colnames(Pf10) <- cnames
+    Opf <- (.1*Pf1$TSR)+(.1*Pf2$TSR)+(.1*Pf3$TSR)+(.1*Pf4$TSR)+(.1*Pf5$TSR)+
+        (.1*Pf6$TSR)+(.1*Pf7$TSR)+(.1*Pf8$TSR)+(.1*Pf9$TSR)+(.1*Pf10$TSR)
+    Opf <- as.data.frame(Opf)
+    colnames(Opf) <- "TSR"
+    for (i in 1:nrow(Opf)){
+    Opf$TSR[i] <- (.1*Pf1$TSR[i])+(.1*Pf2$TSR[i])+(.1*Pf3$TSR[i])+
+        (.1*Pf4$TSR[i])+(.1*Pf5$TSR[i])+(.1*Pf6$TSR[i])+(.1*Pf7$TSR[i])+
+        (.1*Pf8$TSR[i])+(.1*Pf9$TSR[i])+(.1*Pf10$TSR[i])   
+    Opf$R[i] <- 1+(Opf$TSR[i]/100)
+    Opf$R[is.na(Opf$R)] <- 1
+    Opf$Creturn[i] <- ((((cumprod(Opf$R)[i]))-1)*100)
+    Opf$SnPR[i] <- Pf1$SnPR[i]
+    Opf$SPCreturn[i] <- Pf1$SPCreturn[i]
+    Opf$Hitrate[i] <- ifelse(Opf$TSR[i]>0 ,1, 0)
+    Opf$SHitrate[i] <- ifelse(Opf$SnPR[i]>0 ,1, 0)
+    Opf$BR[i] <- 1+(Opf$SnPR[i]/100)
+    } 
+    rownames(Opf) <- Dates[(length(Dates)-nrow(Opf)+1):length(Dates)]
+    Opf
+})
+
+output$portplot <- renderPlot({
+    Opf <- Opf()
+    Opf <- as.data.frame(Opf)
+    min <- min((min(na.omit(Opf$Creturn))), (min(na.omit(Opf$SPCreturn))))-10
+    max <- max((max(na.omit(Opf$Creturn))), (max(na.omit(Opf$SPCreturn))))+10
+    ggplot(Opf, aes(x = rownames(Opf), y=min:max, group = 1))+
+    geom_line(aes(y=Creturn, color = "TSR Cumulative Return"))+
+    geom_line(aes(y=SPCreturn, color = "S&P Cumulative Return"))+
+    labs(title = "Cumulative Returns", x = "Dates", y= "Return")+
+    scale_x_discrete(breaks = rownames(Opf)[c(T,rep(F,50))])
+})
+
+
+output$portdot <- renderPlot({
+    Opf <- Opf()
+    Opf <- as.data.frame(Opf)
+    Opf$DP <- Opf$BR*Opf$TSR
+    ggplot(Opf, aes(x = rownames(Opf), y=DP, group = 1))+
+    geom_point(aes(y=DP))+
+    labs(title = "Dotplot", x = "Dates", y= "")+
+    scale_x_discrete(breaks = rownames(Opf)[c(T,rep(F,50))])
+    
+})
+
+PMetrics <- reactive({
+    Opf <- Opf()
+    Opf <- as.data.frame(Opf)
+    PMetrics <- matrix(0, 6,3)
+    PMetrics <- as.data.frame(PMetrics)
+    colnames(PMetrics) <- c("", "TS", "S&P")
+    PMetrics[1,1] <- "Average Weekly Return"
+    PMetrics[2,1] <- "Volatility"
+    PMetrics[3,1] <- "Sharpe Ratio"
+    PMetrics[4,1] <- "Peak to Drawdown"
+    PMetrics[5,1] <- "Recovery"
+    PMetrics[6,1] <- "Hit Rate"
+    #mean
+    n <- nrow(Opf)-1
+    Treturn <- Opf$Creturn[n]/100
+    ARe <- ((((1+Treturn)^(1/n))-1)*100)
+    PMetrics[1,2] <- ARe
+    Treturn <- Opf$SPCreturn[n]/100
+    BRe <- ((((1+Treturn)^(1/n))-1)*100)
+    PMetrics[1,3] <- BRe
+    
+    #Standard Deviation
+    PMetrics[2,2] <- sd(na.omit(Opf$TSR))
+    PMetrics[2,3] <- sd(na.omit(Opf$SnPR))
+    
+    #Sharpe
+    PMetrics[3,2] <- sharpe(na.omit(Opf$Creturn), scale = sqrt(52))
+    PMetrics[3,3] <- sharpe(na.omit(Opf$SPCreturn), scale = sqrt(52))
+    
+    #Maximum Drawdown
+    mdpb <- maxdrawdown(na.omit(Opf$Creturn))
+    PMetrics[4,2] <- mdpb$maxdrawdown
+    mdbb <- maxdrawdown(na.omit(Opf$SPCreturn))
+    PMetrics[4,3] <- mdbb$maxdrawdown
+    
+    #Recovery rate
+    #Portfolio
+    sdatep <- mdpb$from
+    lowdatep <- mdpb$to
+    sdatepricep <- Opf$Creturn[sdatep]
+    locrecp <- min(which((Opf$Creturn[(lowdatep+1):nrow(Opf)])>sdatepricep))
+    PMetrics[5,2] <- locrecp
+    #S&P
+    sdateb <- mdbb$from
+    lowdateb <- mdbb$to
+    sdatepriceb <- Opf$SPCreturn[sdateb]
+    locrecb <- min(which((Opf$SPCreturn[(lowdateb+1):nrow(Opf)])>sdatepriceb))
+    PMetrics[5,3] <- locrecb
+    #Hitrate
+    PMetrics[6,2] <- (sum(na.omit(Opf$Hitrate)))/(nrow(Opf)-1)
+    PMetrics[6,3] <- (sum(na.omit(Opf$SHitrate)))/(nrow(Opf)-1)
+    PMetrics[,2:3] <- round(PMetrics[,2:3], digits = 4)
+    PMetrics
+})
+
+output$PMetrics <- renderDataTable({
+    PMetrics <- PMetrics()
+    PMetrics
+}, options = list(dom = 't'))
+
+PRMetrics <- reactive({
+    Opf <- Opf()
+    Opf <- as.data.frame(Opf)
+    
+    #Recursive Sharpe
+    for (i in 1:(nrow(Opf)-1)){
+    Opf$Sharpe[i] <- sharpe(na.omit(Opf$Creturn)[1:i], scale = sqrt(52))
+    }
+    
+    #Recursive Vol
+    for (i in 1:(nrow(Opf)-1)){
+    Opf$Vol[i] <- sd(na.omit(Opf$TSR)[1:i])
+    }
+    Opf
+})
+
+output$portretplot <- renderPlot({
+    Opf <- PRMetrics()
+    Opf <- as.data.frame(Opf)
+    min <- min((min(na.omit(Opf$TSR))), (min(na.omit(Opf$Sharpe))), min(na.omit(Opf$Vol)))-5
+    max <- max((max(na.omit(Opf$TSR))), (max(na.omit(Opf$Sharpe))), max(na.omit(Opf$Vol)))+5
+    ggplot(Opf, aes(x = rownames(Opf), y=min:max, group = 1))+
+    geom_line(aes(y=TSR, color = "Weekly Return"))+
+    geom_line(aes(y=Sharpe, color = "Sharpe"))+
+    geom_line(aes(y=Vol, color = "Volatility"))+
+    labs(title = "Cumulative Returns", x = "Dates", y= "Return")+
+    scale_x_discrete(breaks = rownames(Opf)[c(T,rep(F,50))])
+})
 
 #-------------------------------------------------------------------------
-#-----------PAGE 5------------BACKTEST FOR 17 YEARS------------------
+#-----------PAGE 6------------BACKTEST FOR 17 YEARS------------------
 #-------------------------------------------------------------------------
-
-
 
 OpfEP <- reactive({
     Pf <- Cpairs()
@@ -1808,10 +1989,6 @@ PRMetricsEP <- reactive({
     for (i in 1:(nrow(Opf))){
         Opf$Sharpe[i] <- sharpe(na.omit(Opf$Creturn)[1:i], scale = sqrt(52))
     }
-    for (i in 1:(nrow(Opf)-1)){
-        Opf$SPSharpe[i] <- sharpe(na.omit(Opf$SPCreturn)[1:i], scale = sqrt(52))
-    }
-    
     
     #Recursive Vol
     for (i in 1:(nrow(Opf)-1)){
@@ -1827,7 +2004,6 @@ output$portretplotEP <- renderPlot({
     max <- max((max(na.omit(Opf$Sharpe))), max(na.omit(Opf$Vol)))+5
     ggplot(Opf, aes(x = rownames(Opf), y=min:max, group = 1))+
     geom_line(aes(y=Sharpe, color = "Sharpe"))+
-    geom_line(aes(y=SPSharpe, color = "S&P Sharpe"))+
     geom_line(aes(y=Vol, color = "Volatility"))+
     labs(title = "Cumulative Returns", x = "Dates", y= "Return")+
     scale_x_discrete(breaks = rownames(Opf)[c(T,rep(F,208))])
