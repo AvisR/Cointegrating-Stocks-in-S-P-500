@@ -16,6 +16,6 @@ Step 10 -> Backtest and Performance Evaluation of the portfolio                 
 
 
 Step 2 and 3 takes a long time. To make the dashboard faster, you can export the forecasts and the individual pair's performance and import them to make the dashboard lighter.  
-Step 8-10 must be improved rebalancing the pairs every week instead of choosing same pair. (This is also against the theory as all the pairs exhit cointegrating relationship only during a specific period.)
+Step 8-10 must be improved by rebalancing the pairs every week instead of choosing same pair. (This is also against the theory as all the pairs exhit cointegrating relationship only during a specific period.)
 
 P.S - I have only tested for relationship between two stocks at a time. If we are to extend this to cointegrated relationship between multiple stocks, that would be a typical statistical arbitrage strategy.
